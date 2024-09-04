@@ -1,0 +1,419 @@
+@Entity
+@Data
+@Table(name = "order_history")
+public class OrderEntity {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "order_seq")
+	@SequenceGenerator(name = "order_seq", sequenceName = "order_seq", allocationSize = 1)
+	private Integer orderId;
+
+	@ManyToOne(optional = false)
+	@JoinColumn(name = "user_id", referencedColumnName = "userName")
+	private UserEntity user;
+
+	@ManyToOne(optional = false)
+	@JoinColumn(name = "stock_id", referencedColumnName = "symbol")
+	private StockEntity stockDetail;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "order_type", nullable = false)
+	private OrderType orderType;
+
+	@Column(name = "quantity", nullable = false)
+	private Integer quantity;
+
+	@Column(name = "price", nullable = false)
+	private BigDecimal price;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status", nullable = false)
+	private OrderStatus status;
+	
+	private LocalDateTime createdAt;
+	
+//	public OrderEntity(String stockId, String userId,Integer quantity, String orderType) {
+//		
+//	}
+}
+
+
+
+
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor	
+@Data
+@Table(name = "stock_info")
+public class StockEntity {
+
+//	@Id
+//	@GeneratedValue(strategy = GenerationType.IDENTITY)
+//	private Integer companyId;
+	
+	@Column(nullable = false, length = 100)
+    private String name;
+	
+	@Id
+    private String symbol;
+	
+	@Column(columnDefinition = "TEXT")
+    private String description;
+	
+//	@OneToMany(mappedBy = "stock", fetch = FetchType.LAZY,cascade = CascadeType.PERSIST,
+//			targetEntity = StockHistoryEntity.class)
+//	private List<StockHistoryEntity> stockHistory;
+    
+//    @Override
+//    public boolean equals(Object o) {
+//        if (this == o) return true;
+//        if (o == null || getClass() != o.getClass()) return false;
+//        CompanyEntity company = (CompanyEntity) o;
+//        return Objects.equals(companyId, company.companyId) &&
+//               Objects.equals(name, company.name) &&
+//               Objects.equals(symbol, company.symbol) &&
+//               Objects.equals(description, company.description);
+//    }
+//
+//    @Override
+//    public int hashCode() {
+//        return Objects.hash(companyId, name, symbol, description);
+//    }
+//    
+    @Override
+    public String toString() {
+        return "Company{" +
+               "name='" + name + '\'' +
+               ", symbol='" + symbol + '\'' +
+               ", description='" + description + '\'' +
+               ""+
+               '}';
+    }
+    
+//   public StockEntity(StockModel stock) {
+//	   this.name = stock.getName();
+//	   this.symbol = stock.getSymbol();
+//	   this.description = stock.getDescription();
+//   }
+	
+}
+
+
+
+@Entity
+@Data
+@NoArgsConstructor
+@Table(name = "user_info")
+public class UserEntity {
+
+	
+//	@GeneratedValue(strategy = GenerationType.IDENTITY)
+//	private Long userId;
+	@Id
+	private String userName;
+	private String fullName;
+	private String city;
+	private String phoneNumber;
+	private String password;
+	private String emailAddress;
+	private String role;
+	private String panNo;
+	private LocalDateTime createdAt;
+//	private Long DAN;
+	@OneToMany(mappedBy = "user", fetch = FetchType.LAZY,cascade = CascadeType.PERSIST,
+			targetEntity = HoldingEntity.class)
+	private Set<HoldingEntity> holdings;
+	
+	public UserEntity(UserModel user) {
+		this.userName = user.getUserName();
+		this.password = user.getPassword();
+		this.fullName = user.getFullName();
+		this.city=user.getCity();
+		this.emailAddress = user.getEmailAddress();
+		this.phoneNumber = user.getPhoneNumber();
+		this.role = user.getRole();
+		this.panNo = user.getPanNo();
+		this.createdAt = LocalDateTime.now();
+	}
+}
+
+
+@Repository
+public interface HoldingRepo extends JpaRepository<HoldingEntity, Integer> {
+
+//	Optional<Set<HoldingEntity>> findHoldingsByUser_UserName(String userName);
+
+	Set<HoldingEntity> getHoldingsByUser_UserName(String userName);
+
+	//Optional<HoldingEntity> findByUser_UserNameAndSymbol(String userName, String name);
+
+//	Optional<HoldingEntity> findByUser_UserNameAndSymbol(String userName, String name);
+	
+}
+
+
+@Repository
+public interface OrderRepo extends JpaRepository<OrderEntity, Integer> {
+
+//	List<OrderEntity> findByTimeRange(LocalDateTime startOfDay, LocalDateTime endOfDay);
+
+//	List<OrderEntity> findByTimeStampBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay,String status);
+
+//	List<OrderEntity> findByCreatedAtBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay, String string);
+
+	//List<OrderEntity> findByStockDetail_StockId(String string);
+
+	List<OrderEntity> findByStockDetail_Symbol(String string);
+	
+//	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetween(String string, LocalDateTime startOfDay, LocalDateTime endOfDay);
+
+//	List<OrderEntity> findByStockDetail_SymbolAndStatusAndCreatedAtBetween(String string, LocalDateTime startOfDay,
+//			LocalDateTime endOfDay, String string2);
+
+
+
+	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetweenAndStatus(String string, LocalDateTime startOfDay,
+			LocalDateTime endOfDay, OrderStatus pending);
+
+//	List<OrderEntity> findByCreatedAtBetweenAndStatusAndStockId(LocalDateTime startOfDay, LocalDateTime endOfDay,
+//			String string, String name);	
+
+}
+
+//@Component
+//public class OrderReconciliation {
+//	
+//	@Autowired
+//	private HoldingRepo holdingRepo;
+//	
+//	@Autowired
+//	private OrderRepo orderRepo;
+//	
+//	@Autowired
+//	private StockHistoryRepo stockHistoryRepo;	
+//	
+//	@Autowired
+//	private StockRepo stockRepo;
+//	
+//	@Scheduled(cron = "05 39 17 * * *")
+//	public void makeOrderRecon() {
+//		LocalDate date = LocalDate.now();
+//		LocalDate yesterday = date.minusDays(1);
+//		LocalDateTime startOfDay = date.atTime(LocalTime.of(7, 00));
+//		LocalDateTime endOfDay = date.atTime(LocalTime.of(19, 30));
+//	//	List<OrderEntity> orders = orderRepo.findByCreatedAtBetweenAndStatus(startOfDay, endOfDay,"pending");
+//		List<StockEntity> stocks = stockRepo.findAll();
+//		List<String> symbols = stocks.stream().map(StockEntity::getSymbol).collect(Collectors.toList());
+//		
+//	for(String stock : symbols) {	
+//		StockHistoryEntity stockInfo = stockHistoryRepo.findByStockEntity_SymbolAndDate(stock, LocalDate.now());
+//		List<OrderEntity> orders = orderRepo.findByStockDetail_SymbolAndCreatedAtBetweenAndStatus(stock,startOfDay,endOfDay,OrderStatus.PENDING);
+//		if(orders == null)
+//			continue;
+//		List<OrderEntity> buyList = orders.stream().filter(x-> (OrderType.BUY).equals(x.getOrderType())).collect(Collectors.toList());
+//		List<OrderEntity> sellList = orders.stream().filter(x-> (OrderType.SELL).equals(x.getOrderType())).collect(Collectors.toList());
+//		
+//		Integer buyListCount = buyList.stream().mapToInt(OrderEntity::getQuantity).sum();
+//		Integer sellListCount = sellList.stream().mapToInt(OrderEntity::getQuantity).sum();
+//		
+//		if(buyListCount<sellListCount) {
+//			for(OrderEntity buyOrder : buyList) {
+//				Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndSymbol(buyOrder.getUser().getUserName(),buyOrder.getStockDetail().getName());
+//				if(holding.isPresent()) {
+//					holding.get().setNoOfStocks(holding.get().getNoOfStocks()+buyOrder.getQuantity());
+//					holding.get().setAveragePrice(calculateAveragePrice(holding.get().getNoOfStocks(),
+//							holding.get().getAveragePrice(),buyOrder.getPrice()));
+//					holding.get().setInvestedValue(holding.get().getAveragePrice().multiply(BigDecimal.valueOf(buyOrder.getQuantity())));
+//					holdingRepo.save(holding.get());
+//					buyOrder.setStatus(OrderStatus.COMPLETED);
+//					orderRepo.save(buyOrder);
+//				} else {
+//					HoldingEntity newHolding = new HoldingEntity();
+//                    newHolding.setStock(buyOrder.getStockDetail());
+//                    newHolding.setUser(buyOrder.getUser());
+//                    newHolding.setNoOfStocks(buyOrder.getQuantity());
+//                    newHolding.setInvestedValue(stockInfo.getPrice().multiply(BigDecimal.valueOf(buyOrder.getQuantity())));
+//                    buyOrder.setStatus(OrderStatus.COMPLETED);
+//					orderRepo.save(buyOrder);
+//                    }
+//			}
+//		} else if(sellListCount<buyListCount) {
+//			for(OrderEntity sellOrder : sellList) {
+//				Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndSymbol(sellOrder.getUser().getUserName(),sellOrder.getStockDetail().getName());
+//				if(holding.isPresent()) {
+//					holding.get().setNoOfStocks(holding.get().getNoOfStocks()+sellOrder.getQuantity());
+//					holding.get().setAveragePrice(calculateAveragePrice(holding.get().getNoOfStocks(),
+//							holding.get().getAveragePrice(),sellOrder.getPrice()));
+//					holding.get().setInvestedValue(holding.get().getAveragePrice().multiply(BigDecimal.valueOf(sellOrder.getQuantity())));
+//					holdingRepo.save(holding.get());
+//					sellOrder.setStatus(OrderStatus.COMPLETED);
+//					orderRepo.save(sellOrder);
+//				} else {
+//					HoldingEntity newHolding = new HoldingEntity();
+//                    newHolding.setStock(sellOrder.getStockDetail());
+//                    newHolding.setUser(sellOrder.getUser());
+//                    newHolding.setNoOfStocks(sellOrder.getQuantity());
+//                    newHolding.setInvestedValue(stockInfo.getPrice().multiply(BigDecimal.valueOf(sellOrder.getQuantity())));
+//                    sellOrder.setStatus(OrderStatus.COMPLETED);
+//					orderRepo.save(sellOrder);
+//                    }
+//			}
+//		}
+//				
+//	}
+//		
+//		
+////		for(StockHistoryEntity s : stocks) {
+////			
+////			StockEntity stockDetail = s.getStock();
+////			
+//////			List<OrderEntity> stockOrders = orderRepo.findByCreatedAtBetweenAndStatusAndStockId(startOfDay, endOfDay,"pending",s.getStock().getName());
+////			
+////			
+////			
+////			
+////		}
+//		
+//		
+//		
+//		
+//	}
+//
+//	private BigDecimal calculateAveragePrice(int noOfStocks, BigDecimal averagePrice, BigDecimal price) {
+//		
+//		BigDecimal sum = averagePrice.add(price);
+//		BigDecimal newAvg = sum.divide(BigDecimal.valueOf(noOfStocks) );
+//		
+//		return newAvg;
+//	}
+//
+//}
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Function to fetch stock data from the API
+    async function fetchStockData() {
+        try {
+            const response = await fetch('http://localhost:8081/stocks/list');
+            const data = await response.json();
+
+            if (data.statusCode === 200) {
+                populateStocksTable(data.data);
+            } else {
+                console.error('Error fetching data:', data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    // Function to populate the stocks table with fetched data
+    function populateStocksTable(stocks) {
+        const tableBody = document.querySelector('#stocksTableBody');
+        tableBody.innerHTML = ''; // Clear existing data
+
+        stocks.forEach(stock => {
+            const row = document.createElement('tr');
+
+            row.innerHTML = `
+                <td>${stock.symbol}</td>
+                <td>${stock.name}</td>
+                <td>$${stock.price.toFixed(2)}</td>
+                <td>${stock.volume.toLocaleString()}</td>
+                <td>${stock.percentageChange.toLocaleString()}</td>
+
+                <td><button class="buy-btn" onclick="handleAction('buy', '${stock.symbol}')">Buy</button>
+                <button class="sell-btn" onclick="handleAction('sell', '${stock.symbol}')">Sell</button></td>
+            `;
+
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Handle buy/sell actions
+    window.handleAction = function(action, symbol) {
+        alert(`Action: ${action} for Stock Symbol: ${symbol}`);
+        // Implement additional functionality if needed
+        // e.g., redirecting to a different page or making an API call
+    };
+
+    // Handle logout
+    document.getElementById('logoutButton').addEventListener('click', () => {
+        alert('Logging out...');
+        // Implement logout logic here
+        window.location.href = 'login.html';
+    });
+
+    // Fetch and display stock data when the page loads
+    fetchStockData();
+});
+
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepo orderRepository;
+
+ //   @Autowired
+//    private CompanyRepository companyRepository; // Assuming you have this to get company names
+
+    public List<OrderEntity> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    public List<OrderModel> getOrderHistory(String userName, LocalDateTime beginDate, LocalDateTime endDate) {
+        List<OrderEntity> orders = orderRepository.findAll();
+
+        if (userName != null) {
+            orders = orders.stream()
+                .filter(order -> order.getUser().getUserName().equals(userName))
+                .collect(Collectors.toList());
+        }
+
+        if (beginDate != null && endDate != null) {
+            orders = orders.stream()
+                .filter(order -> !order.getCreatedAt().isBefore(beginDate) && !order.getCreatedAt().isAfter(endDate))
+                .collect(Collectors.toList());
+        }
+
+        return orders.stream().map(order -> {
+            OrderModel dto = new OrderModel();
+            dto.setTransactionId(order.getOrderId());
+            dto.setTransactionType(order.getOrderType().name());
+//            dto.setCompanyName(getCompanyNameById(order.getCompanyId()));
+            dto.setDate(order.getCreatedAt());
+            dto.setCompanyName(order.getStockDetail().getName());
+            dto.setSharePrice(order.getPrice());
+            dto.setQuantity(order.getQuantity());
+            dto.setTotalPrice(order.getPrice().multiply(BigDecimal.valueOf(order.getQuantity())));
+            dto.setStatus(order.getStatus().name());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+//    private String getCompanyNameById(Long companyId) {
+//        // Fetch company name by companyId
+//        Optional<Company> company = companyRepository.findById(companyId);
+//        return company.map(Company::getName).orElse("Unknown");
+//    }
+}
