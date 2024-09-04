@@ -1,0 +1,135 @@
+@Entity
+@Data
+@Table(name = "order_history")
+public class OrderEntity {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "order_seq")
+	@SequenceGenerator(name = "order_seq", sequenceName = "order_seq", allocationSize = 1)
+	private Integer orderId;
+
+	@ManyToOne(optional = false)
+	@JoinColumn(name = "user_id", referencedColumnName = "userName")
+	private UserEntity user;
+
+	@ManyToOne(optional = false)
+	@JoinColumn(name = "stock_id", referencedColumnName = "symbol")
+	private StockEntity stockDetail;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "order_type", nullable = false)
+	private OrderType orderType;
+
+	@Column(name = "quantity", nullable = false)
+	private Integer quantity;
+
+	@Column(name = "price", nullable = false)
+	private BigDecimal price;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status", nullable = false)
+	private OrderStatus status;
+	
+	private LocalDateTime createdAt;
+	
+//	public OrderEntity(String stockId, String userId,Integer quantity, String orderType) {
+//		
+//	}
+}
+
+
+
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepo orderRepository;
+
+
+    @Autowired
+    private StockRepo stockRepo;
+
+    @Autowired
+    private HoldingRepo holdingRepo;
+ //   @Autowired
+//    private CompanyRepository companyRepository; // Assuming you have this to get company names
+
+    public List<OrderEntity> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    public List<OrderModel> getOrderHistory(String userName, LocalDateTime beginDate, LocalDateTime endDate) {
+        List<OrderEntity> orders = orderRepository.findAll();
+
+        if (userName != null) {
+            orders = orders.stream()
+                .filter(order -> order.getUser().getUserName().equals(userName))
+                .collect(Collectors.toList());
+        }
+
+        if (beginDate != null && endDate != null) {
+            orders = orders.stream()
+                .filter(order -> !order.getCreatedAt().isBefore(beginDate) && !order.getCreatedAt().isAfter(endDate))
+                .collect(Collectors.toList());
+        }
+
+        return orders.stream().map(order -> {
+            OrderModel dto = new OrderModel();
+            dto.setTransactionId(order.getOrderId());
+            dto.setTransactionType(order.getOrderType().name());
+//            dto.setCompanyName(getCompanyNameById(order.getCompanyId()));
+            dto.setDate(order.getCreatedAt());
+            dto.setCompanyName(order.getStockDetail().getName());
+            dto.setSharePrice(order.getPrice());
+            dto.setQuantity(order.getQuantity());
+            dto.setTotalPrice(order.getPrice().multiply(BigDecimal.valueOf(order.getQuantity())));
+            dto.setStatus(order.getStatus().name());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+    
+    public void createOrder(OrderModel orderModel) throws Exception {
+        // Fetch stock details by symbol
+        StockEntity stock = stockRepo.findById(orderModel.getCompanyName())
+                .orElseThrow(() -> new Exception("Stock not found"));
+
+        // Get the current logged-in user
+        UserEntity user = getCurrentUser();  // Method to fetch the logged-in user
+
+        // Create and populate the OrderEntity
+        OrderEntity order = new OrderEntity();
+        order.setStockDetail(stock);
+        order.setUser(user);
+        order.setQuantity(orderModel.getQuantity());
+        order.setPrice(stock.getPrice());  // Use the current price from the stock
+        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
+        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
+        order.setCreatedAt(LocalDateTime.now());
+
+        // Validate holdings for Sell orders
+        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
+            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
+            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
+                orderRepository.save(order);
+            } else {
+                throw new Exception("Not enough stocks to sell");
+            }
+        } else {
+            // For BUY orders, directly save the order
+            orderRepository.save(order);
+        }
+    }
+
+	private UserEntity getCurrentUser() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+}
+
+
+//    private String getCompanyNameById(Long companyId) {
+//        // Fetch company name by companyId
+//        Optional<Company> company = companyRepository.findById(companyId);
+//        return company.map(Company::getName).orElse("Unknown");
+//    }
+
