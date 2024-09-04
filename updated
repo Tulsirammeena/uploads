@@ -147,3 +147,39 @@ public class OrderService {
             throw new RuntimeException("No authenticated user found");
         }
     }
+
+
+
+
+public void createOrder(OrderModel orderModel, String userName) throws Exception {
+        // Fetch stock details by symbol
+        StockEntity stock = stockRepo.findById(orderModel.getCompanyName())
+                .orElseThrow(() -> new Exception("Stock not found"));
+
+        // Fetch the user by the passed userName from the frontend
+        UserEntity user = userRepo.findByUserName(userName)
+                .orElseThrow(() -> new Exception("User not found"));
+
+        // Create and populate the OrderEntity
+        OrderEntity order = new OrderEntity();
+        order.setStockDetail(stock);
+        order.setUser(user);
+        order.setQuantity(orderModel.getQuantity());
+        order.setPrice(stock.getPrice());  // Use the current price from the stock
+        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
+        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
+        order.setCreatedAt(LocalDateTime.now());
+
+        // Save order based on order type
+        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
+            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
+            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
+                orderRepository.save(order);
+            } else {
+                throw new Exception("Not enough stocks to sell");
+            }
+        } else {
+            // Save BUY orders directly
+            orderRepository.save(order);
+        }
+    }
