@@ -1,0 +1,120 @@
+// Handle buy/sell actions
+window.handleAction = async function(action, symbol) {
+    // Prompt user for quantity
+    const quantity = prompt("Enter the quantity:");
+    if (!quantity || isNaN(quantity) || quantity <= 0) {
+        alert("Please enter a valid quantity.");
+        return;
+    }
+
+    const orderData = {
+        stockSymbol: symbol,
+        action: action.toUpperCase(), // BUY or SELL
+        quantity: parseInt(quantity)
+    };
+
+    try {
+        const response = await fetch('http://localhost:8081/api/orders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(orderData)
+        });
+
+        if (response.ok) {
+            alert("Order placed successfully!");
+        } else {
+            alert("Failed to place order.");
+        }
+    } catch (error) {
+        console.error('Error placing order:', error);
+    }
+};
+
+
+//next
+
+
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepo orderRepository;
+
+    @Autowired
+    private StockRepo stockRepo;
+
+    @Autowired
+    private HoldingRepo holdingRepo;
+
+    public void createOrder(OrderModel orderModel) throws Exception {
+        // Fetch stock details by symbol
+        StockEntity stock = stockRepo.findById(orderModel.getCompanyName())
+                .orElseThrow(() -> new Exception("Stock not found"));
+
+        // Get the current logged-in user
+        UserEntity user = getCurrentUser();  // Method to fetch the logged-in user
+
+        // Create and populate the OrderEntity
+        OrderEntity order = new OrderEntity();
+        order.setStockDetail(stock);
+        order.setUser(user);
+        order.setQuantity(orderModel.getQuantity());
+        order.setPrice(stock.getPrice());  // Use the current price from the stock
+        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
+        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
+        order.setCreatedAt(LocalDateTime.now());
+
+        // Validate holdings for Sell orders
+        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
+            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndSymbol(user.getUserName(), stock.getSymbol());
+            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
+                orderRepository.save(order);
+            } else {
+                throw new Exception("Not enough stocks to sell");
+            }
+        } else {
+            // For BUY orders, directly save the order
+            orderRepository.save(order);
+        }
+    }
+}
+
+
+//next
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    // API to create new Buy/Sell orders
+    @PostMapping("/create")
+    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel) {
+        try {
+            // Call the service to process the order
+            orderService.createOrder(orderModel);
+            return ResponseEntity.ok("Order placed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating order: " + e.getMessage());
+        }
+    }
+
+    // Existing method for fetching order history
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+}
