@@ -133,3 +133,17 @@ public class OrderService {
 //        return company.map(Company::getName).orElse("Unknown");
 //    }
 
+
+
+  // Fetches the current authenticated user from Spring Security
+    private UserEntity getCurrentUser() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        if (principal instanceof UserDetails) {
+            String username = ((UserDetails) principal).getUsername();
+            return userRepo.findByUserName(username)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+        } else {
+            throw new RuntimeException("No authenticated user found");
+        }
+    }
