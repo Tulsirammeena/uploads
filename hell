@@ -1,0 +1,32 @@
+// Handle buy/sell actions
+window.handleAction = async function(action, symbol) {
+    const quantity = prompt("Enter the quantity:");
+    if (!quantity || isNaN(quantity)) {
+        alert("Invalid quantity!");
+        return;
+    }
+
+    const orderData = {
+        stockSymbol: symbol,
+        action: action.toUpperCase(),
+        quantity: parseInt(quantity)
+    };
+
+    try {
+        const response = await fetch('http://localhost:8081/api/orders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(orderData)
+        });
+
+        if (response.ok) {
+            alert("Order placed successfully!");
+        } else {
+            alert("Failed to place order.");
+        }
+    } catch (error) {
+        console.error('Error placing order:', error);
+    }
+};
