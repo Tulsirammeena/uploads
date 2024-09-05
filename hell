@@ -1,116 +1,3 @@
-public class OrderModel {
-	private Integer orderId;
-    public String OrderType; // Equivalent to OrderType
-    private String companyName; // Requires a lookup or join to get the company name
-    private LocalDateTime date;
-    private BigDecimal price;
-    private Integer quantity;
-    private BigDecimal totalPrice;
-    public String status; // Equivalent to OrderStatus
-    
-    
-    
-    public Integer getOrderId() {
-        return orderId;
-    }
-
-    public void setTransactionId(Integer orderId) {
-        this.orderId = orderId;
-    }
-
-    public String getOrderType() {
-        return OrderType;
-    }
-
-    public void setTransactionType(String OrderType) {
-        this.OrderType = OrderType;
-    }
-
-    public String getCompanyName() {
-        return companyName;
-    }
-
-    public void setCompanyName(String companyName) {
-        this.companyName = companyName;
-    }
-
-    public LocalDateTime getDate() {
-        return date;
-    }
-
-    public void setDate(LocalDateTime date) {
-        this.date = date;
-    }
-
-    public BigDecimal getPrice() {
-        return price;
-    }
-
-    public void setSharePrice(BigDecimal price) {
-        this.price = price;
-    }
-
-    public Integer getQuantity() {
-        return quantity;
-    }
-
-    public void setQuantity(Integer quantity) {
-        this.quantity = quantity;
-    }
-
-    public BigDecimal getTotalPrice() {
-        return totalPrice;
-    }
-
-    public void setTotalPrice(BigDecimal totalPrice) {
-        this.totalPrice = totalPrice;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-}
-
-
-
-
-@RestController
-@RequestMapping("/api/orders")
-public class OrderController {
-
-    @Autowired
-    private OrderService orderService;
-
-    @GetMapping("/history")
-    public List<OrderModel> getOrderHistory(
-            @RequestParam(value = "userId", required = false) String userId,
-            @RequestParam(value = "begin_date", required = false) String beginDateStr,
-            @RequestParam(value = "end_date", required = false) String endDateStr) {
-
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
-        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
-
-        return orderService.getOrderHistory(userId, beginDate, endDate);
-    }
-    @CrossOrigin(origins = "http://127.0.0.1:3000")
-    @PostMapping("/create")
-    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel, @RequestParam String userName) {
-        try {
-            // Call the service to process the order
-            orderService.createOrder(orderModel,userName);
-            return ResponseEntity.ok("Order placed successfully!");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Error creating order: " + e.getMessage());
-        }
-    }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     // Function to fetch stock data from the API
     async function fetchStockData() {
@@ -136,15 +23,20 @@ document.addEventListener('DOMContentLoaded', () => {
         stocks.forEach(stock => {
             const row = document.createElement('tr');
 
+            // Add data-symbol and data-company-name to the row for easy access
+            row.setAttribute('data-symbol', stock.symbol);
+            row.setAttribute('data-company-name', stock.name);
+
             row.innerHTML = `
                 <td>${stock.symbol}</td>
                 <td>${stock.name}</td>
                 <td>$${stock.price.toFixed(2)}</td>
                 <td>${stock.volume.toLocaleString()}</td>
                 <td>${stock.percentageChange.toLocaleString()}</td>
-
-                <td><button class="buy-btn" onclick="handleAction('buy', '${stock.symbol}')">Buy</button>
-                <button class="sell-btn" onclick="handleAction('sell', '${stock.symbol}')">Sell</button></td>
+                <td>
+                    <button class="buy-btn" onclick="handleAction('buy', '${stock.symbol}')">Buy</button>
+                    <button class="sell-btn" onclick="handleAction('sell', '${stock.symbol}')">Sell</button>
+                </td>
             `;
 
             tableBody.appendChild(row);
@@ -152,31 +44,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to handle Buy/Sell actions
-    window.handleAction = async function(action, symbol, companyName) {
+    window.handleAction = async function(action, symbol) {
         // Prompt user for quantity
         const quantity = prompt("Enter the quantity:");
         if (!quantity || isNaN(quantity) || quantity <= 0) {
             alert("Please enter a valid quantity.");
             return;
         }
-        
-        // Get the current user's username (you might store this in session/localStorage or have a way to get it)
-        const userName = getCurrentUserName(); // Implement this function based on how you manage user sessions
 
-        // Check if userName exists
+        // Get the current user's username (from localStorage)
+        const userName = getCurrentUserName();
         if (!userName) {
             alert("User is not authenticated. Please log in.");
             return;
         }
 
+        // Get the company name from the row's data attribute
+        const companyName = document.querySelector(`tr[data-symbol="${symbol}"]`).getAttribute('data-company-name');
+
+        if (!companyName) {
+            alert("Company name is not defined.");
+            return;
+        }
+
+        // Prepare the order data
         const orderData = {
             companyName: companyName,
-            action: action.toUpperCase(), // BUY or SELL
+            action: action.toUpperCase(),  // BUY or SELL
             quantity: parseInt(quantity),
             userName: userName  // Pass the username in the request
         };
 
-        console.log("order data: ", orderData);
+        console.log("Order data: ", orderData);
 
         try {
             const response = await fetch('http://localhost:8081/api/orders/create', {
@@ -190,7 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 alert("Order placed successfully!");
             } else {
-                alert("Failed to place order.");
+                const errorMsg = await response.text();  // Read error message
+                alert(`Failed to place order. Server response: ${errorMsg}`);
             }
         } catch (error) {
             console.error('Error placing order:', error);
@@ -208,13 +108,11 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchStockData();
 });
 
-// Function to get the current user's username (you can adapt this as needed)
+// Function to get the current user's username
 function getCurrentUserName() {
-    // Example: Retrieve the username from localStorage or a global variable
-    // Replace this logic with how you're storing the user's session
     const userName = localStorage.getItem('userName');
     console.log("Fetched userName: ", userName);
-    return userName // This assumes you store the username in localStorage
+    return userName;  // This assumes you store the username in localStorage
 }
 
 <!DOCTYPE html>
@@ -256,8 +154,20 @@ function getCurrentUserName() {
                 </tr>
             </thead>
             <tbody id="stocksTableBody">
-                <!-- Stocks will be dynamically inserted here -->
+                <!-- Example row -->
+                <tr data-symbol="ISFT" data-company-name="Coral India Finance & Housing Limited">
+                    <td>ISFT</td>
+                    <td>Coral India Finance & Housing Limited</td>
+                    <td>$411.85</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>
+                        <button class="buy-btn" onclick="handleAction('buy', 'ISFT')">Buy</button>
+                        <button class="sell-btn" onclick="handleAction('sell', 'ISFT')">Sell</button>
+                    </td>
+                </tr>
             </tbody>
+            
         </table>
     </section>
 
@@ -265,3 +175,185 @@ function getCurrentUserName() {
 </body>
 </html>
 
+
+
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+    @CrossOrigin(origins = "http://127.0.0.1:3000")
+    @PostMapping("/create")
+    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel, @RequestParam String userName) {
+        try {
+            // Call the service to process the order
+            orderService.createOrder(orderModel,userName);
+            return ResponseEntity.ok("Order placed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating order: " + e.getMessage());
+        }
+    }
+}
+
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepo orderRepository;
+
+
+    @Autowired
+    private StockRepo stockRepo;
+
+    @Autowired
+    private HoldingRepo holdingRepo;
+ //   @Autowired
+//    private CompanyRepository companyRepository; // Assuming you have this to get company names
+    
+    @Autowired
+    private UserRepo userRepo;
+
+    public List<OrderEntity> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    public List<OrderModel> getOrderHistory(String userName, LocalDateTime beginDate, LocalDateTime endDate) {
+        List<OrderEntity> orders = orderRepository.findAll();
+
+        if (userName != null) {
+            orders = orders.stream()
+                .filter(order -> order.getUser().getUserName().equals(userName))
+                .collect(Collectors.toList());
+        }
+
+        if (beginDate != null && endDate != null) {
+            orders = orders.stream()
+                .filter(order -> !order.getCreatedAt().isBefore(beginDate) && !order.getCreatedAt().isAfter(endDate))
+                .collect(Collectors.toList());
+        }
+
+        return orders.stream().map(order -> {
+            OrderModel dto = new OrderModel();
+            dto.setTransactionId(order.getOrderId());
+            dto.setTransactionType(order.getOrderType().name());
+//            dto.setCompanyName(getCompanyNameById(order.getCompanyId()));
+            dto.setDate(order.getCreatedAt());
+            dto.setCompanyName(order.getStockDetail().getName());
+            dto.setSharePrice(order.getPrice());
+            dto.setQuantity(order.getQuantity());
+            dto.setTotalPrice(order.getPrice().multiply(BigDecimal.valueOf(order.getQuantity())));
+            dto.setStatus(order.getStatus().name());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+    
+    public void createOrder(OrderModel orderModel, String userName) throws Exception {
+        // Fetch stock details by symbol
+        StockEntity stock = stockRepo.findByName(orderModel.getCompanyName())
+                .orElseThrow(() -> new Exception("Stock not found"));
+
+        // Fetch the user by the passed userName from the frontend
+        UserEntity user = userRepo.findByUserName(userName)
+                .orElseThrow(() -> new Exception("User not found"));
+
+        // Create and populate the OrderEntity
+        OrderEntity order = new OrderEntity();
+        order.setStockDetail(stock);
+        order.setUser(user);
+        order.setQuantity(orderModel.getQuantity());
+        order.setPrice(stock.getPrice());  // Use the current price from the stock
+        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
+        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
+        order.setCreatedAt(LocalDateTime.now());
+
+        // Save order based on order type
+        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
+            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
+            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
+                orderRepository.save(order);
+            } else {
+                throw new Exception("Not enough stocks to sell");
+            }
+        } else {
+            // Save BUY orders directly
+            orderRepository.save(order);
+        }
+    }
+
+//    private UserEntity getCurrentUser() {
+////        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+////
+////        if (principal instanceof UserDetails) {
+////            String username = ((UserDetails) principal).getUsername();
+////            return userRepo.findByUserName(username)
+////                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+////        } else {
+////            throw new RuntimeException("No authenticated user found");
+////        }
+//    }
+    
+}
+
+
+//    private String getCompanyNameById(Long companyId) {
+//        // Fetch company name by companyId
+//        Optional<Company> company = companyRepository.findById(companyId);
+//        return company.map(Company::getName).orElse("Unknown");
+//    }
+
+@Repository
+public interface OrderRepo extends JpaRepository<OrderEntity, Integer> {
+
+//	List<OrderEntity> findByTimeRange(LocalDateTime startOfDay, LocalDateTime endOfDay);
+
+//	List<OrderEntity> findByTimeStampBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay,String status);
+
+//	List<OrderEntity> findByCreatedAtBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay, String string);
+
+	//List<OrderEntity> findByStockDetail_StockId(String string);
+
+	List<OrderEntity> findByStockDetail_Symbol(String string);
+	
+//	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetween(String string, LocalDateTime startOfDay, LocalDateTime endOfDay);
+
+//	List<OrderEntity> findByStockDetail_SymbolAndStatusAndCreatedAtBetween(String string, LocalDateTime startOfDay,
+//			LocalDateTime endOfDay, String string2);
+
+
+
+	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetweenAndStatus(String string, LocalDateTime startOfDay,
+			LocalDateTime endOfDay, OrderStatus pending);
+
+//	List<OrderEntity> findByCreatedAtBetweenAndStatusAndStockId(LocalDateTime startOfDay, LocalDateTime endOfDay,
+//			String string, String name);	
+
+}
+
+
+
+@Repository
+public interface StockRepo extends JpaRepository<StockEntity,String>  {
+
+	StockEntity getBySymbol(String stockId);
+
+	Optional<StockEntity> findByName(String companyName);
+
+
+	
+}
