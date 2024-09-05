@@ -1,0 +1,124 @@
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+@Service
+public class OrderProcessingService {
+
+    @Autowired
+    private OrderService orderService;
+
+    // Scheduled task to run daily at 5:30 PM (use cron expression)
+    @Scheduled(cron = "0 30 17 * * *")
+    public void processPendingOrders() {
+        try {
+            System.out.println("Running scheduled task to process pending orders...");
+
+            // Process pending orders logic
+            orderService.processPendingOrders();
+
+        } catch (Exception e) {
+            System.err.println("Error processing pending orders: " + e.getMessage());
+        }
+    }
+}
+
+
+
+import java.time.LocalDateTime;
+
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepo orderRepository;
+
+    @Autowired
+    private HoldingRepo holdingRepo;
+
+    public void processPendingOrders() {
+        // Fetch all pending orders
+        List<OrderEntity> pendingOrders = orderRepository.findByStatus("PENDING");
+
+        for (OrderEntity order : pendingOrders) {
+            try {
+                // Process each order based on its type
+                if (order.getOrderType().equalsIgnoreCase("SELL")) {
+                    processSellOrder(order);
+                } else {
+                    processBuyOrder(order);
+                }
+            } catch (Exception e) {
+                System.err.println("Error processing order ID " + order.getOrderId() + ": " + e.getMessage());
+            }
+        }
+    }
+
+    private void processSellOrder(OrderEntity order) throws Exception {
+        // Check if user has enough stocks to sell
+        Optional<HoldingEntity> holdingOpt = holdingRepo.findByUser_UserNameAndStock_Symbol(
+                order.getUser().getUserName(), order.getStockDetail().getSymbol());
+        
+        if (holdingOpt.isPresent() && holdingOpt.get().getNoOfStocks() >= order.getQuantity()) {
+            // Update holding and mark order as SUCCESS
+            HoldingEntity holding = holdingOpt.get();
+            holding.setNoOfStocks(holding.getNoOfStocks() - order.getQuantity());
+            holdingRepo.save(holding);
+
+            order.setStatus("SUCCESS");
+            orderRepository.save(order);
+
+            System.out.println("Processed sell order ID " + order.getOrderId());
+        } else {
+            // Mark order as FAILED
+            order.setStatus("FAILED");
+            orderRepository.save(order);
+
+            throw new Exception("Not enough stocks to sell for order ID " + order.getOrderId());
+        }
+    }
+
+    private void processBuyOrder(OrderEntity order) {
+        // Mark order as SUCCESS (you can add more complex logic if needed)
+        order.setStatus("SUCCESS");
+        orderRepository.save(order);
+
+        System.out.println("Processed buy order ID " + order.getOrderId());
+    }
+}
+
+
+@RestController
+@RequestMapping("/admin")
+public class AdminController {
+
+    @Autowired
+    private OrderProcessingService orderProcessingService;
+
+    @PostMapping("/process-orders")
+    public ResponseEntity<String> processOrdersManually() {
+        try {
+            orderProcessingService.processPendingOrders();
+            return ResponseEntity.ok("Pending orders processed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error processing orders: " + e.getMessage());
+        }
+    }
+}
+
+
+document.getElementById("processOrdersBtn").addEventListener("click", async () => {
+    try {
+        const response = await fetch('http://localhost:8081/admin/process-orders', {
+            method: 'POST',
+        });
+
+        if (response.ok) {
+            alert("Pending orders processed successfully!");
+        } else {
+            alert("Failed to process orders.");
+        }
+    } catch (error) {
+        console.error("Error processing orders:", error);
+    }
+});
