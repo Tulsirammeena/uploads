@@ -74,3 +74,194 @@ public class OrderModel {
         this.status = status;
     }
 }
+
+
+
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+    @CrossOrigin(origins = "http://127.0.0.1:3000")
+    @PostMapping("/create")
+    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel, @RequestParam String userName) {
+        try {
+            // Call the service to process the order
+            orderService.createOrder(orderModel,userName);
+            return ResponseEntity.ok("Order placed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating order: " + e.getMessage());
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Function to fetch stock data from the API
+    async function fetchStockData() {
+        try {
+            const response = await fetch('http://localhost:8081/stocks/list');
+            const data = await response.json();
+
+            if (data.statusCode === 200) {
+                populateStocksTable(data.data);
+            } else {
+                console.error('Error fetching data:', data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    // Function to populate the stocks table with fetched data
+    function populateStocksTable(stocks) {
+        const tableBody = document.querySelector('#stocksTableBody');
+        tableBody.innerHTML = ''; // Clear existing data
+
+        stocks.forEach(stock => {
+            const row = document.createElement('tr');
+
+            row.innerHTML = `
+                <td>${stock.symbol}</td>
+                <td>${stock.name}</td>
+                <td>$${stock.price.toFixed(2)}</td>
+                <td>${stock.volume.toLocaleString()}</td>
+                <td>${stock.percentageChange.toLocaleString()}</td>
+
+                <td><button class="buy-btn" onclick="handleAction('buy', '${stock.symbol}')">Buy</button>
+                <button class="sell-btn" onclick="handleAction('sell', '${stock.symbol}')">Sell</button></td>
+            `;
+
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Function to handle Buy/Sell actions
+    window.handleAction = async function(action, symbol, companyName) {
+        // Prompt user for quantity
+        const quantity = prompt("Enter the quantity:");
+        if (!quantity || isNaN(quantity) || quantity <= 0) {
+            alert("Please enter a valid quantity.");
+            return;
+        }
+        
+        // Get the current user's username (you might store this in session/localStorage or have a way to get it)
+        const userName = getCurrentUserName(); // Implement this function based on how you manage user sessions
+
+        // Check if userName exists
+        if (!userName) {
+            alert("User is not authenticated. Please log in.");
+            return;
+        }
+
+        const orderData = {
+            companyName: companyName,
+            action: action.toUpperCase(), // BUY or SELL
+            quantity: parseInt(quantity),
+            userName: userName  // Pass the username in the request
+        };
+
+        console.log("order data: ", orderData);
+
+        try {
+            const response = await fetch('http://localhost:8081/api/orders/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(orderData)
+            });
+
+            if (response.ok) {
+                alert("Order placed successfully!");
+            } else {
+                alert("Failed to place order.");
+            }
+        } catch (error) {
+            console.error('Error placing order:', error);
+        }
+    };
+
+    // Handle logout
+    document.getElementById('logoutButton').addEventListener('click', () => {
+        alert('Logging out...');
+        // Implement logout logic here
+        window.location.href = 'login.html';
+    });
+
+    // Fetch and display stock data when the page loads
+    fetchStockData();
+});
+
+// Function to get the current user's username (you can adapt this as needed)
+function getCurrentUserName() {
+    // Example: Retrieve the username from localStorage or a global variable
+    // Replace this logic with how you're storing the user's session
+    const userName = localStorage.getItem('userName');
+    console.log("Fetched userName: ", userName);
+    return userName // This assumes you store the username in localStorage
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investor's Homepage</title>
+    <link rel="stylesheet" href="investor_style.css">
+</head>
+<body>
+    <header>
+        <h1 id="investorName">Investor Name</h1>
+        <nav><a href="login1.html"><button id="logoutButton">Logout</button></a></nav>
+        
+    </header>
+    <nav>
+        <a href="portfolio.html">
+            <button id="viewPortfolio">View Portfolio</button>
+        </a>
+        <a href="order_history.html">
+            <button id="viewOrderHistory">View Order History</button>
+        </a>
+
+
+        
+        
+    </nav>
+    <section id="stocksSection">
+        <table id="stocksTable">
+            <thead>
+                <tr>
+                    <th>Stock Symbol</th>
+                    <th>Company Name</th>
+                    <th>Price</th>
+                    <th>Volume</th>
+                    <th>Percentage Change</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="stocksTableBody">
+                <!-- Stocks will be dynamically inserted here -->
+            </tbody>
+        </table>
+    </section>
+
+    <script src="investor_scripts.js"></script>
+</body>
+</html>
+
