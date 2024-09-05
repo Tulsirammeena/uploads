@@ -1,74 +1,100 @@
+public class OrderModel {
+	private Integer orderId;
+    public String OrderType; // Equivalent to OrderType
+    private String companyName; // Requires a lookup or join to get the company name
+    private LocalDateTime date;
+    private BigDecimal price;
+    private Integer quantity;
+    private BigDecimal totalPrice;
+    public String status; // Equivalent to OrderStatus
+    private String userName;
+    
+    
+    public String getUserName() {
+		return userName;
+	}
 
-@RestController
-@RequestMapping("/api/orders")
-public class OrderController {
+	public void setUserName(String userName) {
+		this.userName = userName;
+	}
 
-    @Autowired
-    private OrderService orderService;
+	public void setOrderId(Integer orderId) {
+		this.orderId = orderId;
+	}
 
-    @GetMapping("/history")
-    public List<OrderModel> getOrderHistory(
-            @RequestParam(value = "userId", required = false) String userId,
-            @RequestParam(value = "begin_date", required = false) String beginDateStr,
-            @RequestParam(value = "end_date", required = false) String endDateStr) {
+	public void setOrderType(String orderType) {
+		OrderType = orderType;
+	}
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
-        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+	public void setPrice(BigDecimal price) {
+		this.price = price;
+	}
 
-        return orderService.getOrderHistory(userId, beginDate, endDate);
+	public Integer getOrderId() {
+        return orderId;
     }
-    @CrossOrigin(origins = "http://127.0.0.1:3000")
-    @PostMapping("/create")
-    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel) {
-        try {
-            // Call the service to process the order
-        	System.out.println("Recieved orderModel: " + orderModel);
-        	
-        	System.out.println("Recieved userName: " + orderModel.getCompanyName());
-            orderService.createOrder(orderModel,orderModel.getUserName());
-            return ResponseEntity.ok("Order placed successfully!");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Error creating order: " + e.getMessage());
-        }
+
+    public void setTransactionId(Integer orderId) {
+        this.orderId = orderId;
+    }
+
+    public String getOrderType() {
+        return OrderType;
+    }
+
+    public void setTransactionType(String OrderType) {
+        this.OrderType = OrderType;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public LocalDateTime getDate() {
+        return date;
+    }
+
+    public void setDate(LocalDateTime date) {
+        this.date = date;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public void setSharePrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    public Integer getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(Integer quantity) {
+        this.quantity = quantity;
+    }
+
+    public BigDecimal getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(BigDecimal totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }
 
-
- 
-    public void createOrder(OrderModel orderModel, String userName) throws Exception {
-        // Fetch stock details by symbol
-        StockEntity stock = stockRepo.findByName(orderModel.getCompanyName())
-                .orElseThrow(() -> new Exception("Stock not found"));
-        
-        // Fetch the user by the passed userName from the frontend
-        UserEntity user = userRepo.findByUserName(userName)
-                .orElseThrow(() -> new Exception("User not found"));
-
-        // Create and populate the OrderEntity
-        OrderEntity order = new OrderEntity();
-        order.setStockDetail(stock);
-        order.setUser(user);
-        order.setQuantity(orderModel.getQuantity());
-        order.setPrice(stock.getPrice());  // Use the current price from the stock
-        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
-        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
-        order.setCreatedAt(LocalDateTime.now());
-
-        // Save order based on order type
-        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
-            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
-            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
-                orderRepository.save(order);
-            } else {
-                throw new Exception("Not enough stocks to sell");
-            }
-        } else {
-            // Save BUY orders directly
-            orderRepository.save(order);
-        }
-    }
 
 document.addEventListener('DOMContentLoaded', () => {
     // Function to fetch stock data from the API
@@ -141,13 +167,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Prepare the order data
         const orderData = {
-            companyName: companyName,
-            action: action.toUpperCase(),  // BUY or SELL
-            quantity: parseInt(quantity),
-            userName: userName  // Pass the username in the request
+            "companyName": companyName,
+            "action": action.toUpperCase(),  // BUY or SELL
+            "quantity": parseInt(quantity),
+            "userName": userName  // Pass the username in the request
         };
 
-        console.log("Order data being sent ", JSON.stringify(orderData));
+        console.log("Order data being sent ", JSON.stringify(orderData, null, 2));
 
         try {
             const response = await fetch('http://localhost:8081/api/orders/create', {
@@ -186,3 +212,41 @@ function getCurrentUserName() {
     console.log("Fetched userName: ", userName);
     return userName;  // This assumes you store the username in localStorage
 }
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+    @CrossOrigin(origins = "http://127.0.0.1:3000")
+    @PostMapping("/create")
+    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel) {
+        try {
+            // Call the service to process the order
+        	System.out.println("Recieved orderModel: " + orderModel);
+        	
+        	System.out.println("Recieved userName: " + orderModel.getCompanyName());
+            orderService.createOrder(orderModel,orderModel.getUserName());
+            return ResponseEntity.ok("Order placed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating order: " + e.getMessage());
+        }
+    }
+}
+
+
