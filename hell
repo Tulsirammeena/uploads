@@ -1,3 +1,75 @@
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+    @CrossOrigin(origins = "http://127.0.0.1:3000")
+    @PostMapping("/create")
+    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel) {
+        try {
+            // Call the service to process the order
+        	System.out.println("Recieved orderModel: " + orderModel);
+        	
+        	System.out.println("Recieved userName: " + orderModel.getCompanyName());
+            orderService.createOrder(orderModel,orderModel.getUserName());
+            return ResponseEntity.ok("Order placed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating order: " + e.getMessage());
+        }
+    }
+}
+
+
+ 
+    public void createOrder(OrderModel orderModel, String userName) throws Exception {
+        // Fetch stock details by symbol
+        StockEntity stock = stockRepo.findByName(orderModel.getCompanyName())
+                .orElseThrow(() -> new Exception("Stock not found"));
+        
+        // Fetch the user by the passed userName from the frontend
+        UserEntity user = userRepo.findByUserName(userName)
+                .orElseThrow(() -> new Exception("User not found"));
+
+        // Create and populate the OrderEntity
+        OrderEntity order = new OrderEntity();
+        order.setStockDetail(stock);
+        order.setUser(user);
+        order.setQuantity(orderModel.getQuantity());
+        order.setPrice(stock.getPrice());  // Use the current price from the stock
+        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
+        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
+        order.setCreatedAt(LocalDateTime.now());
+
+        // Save order based on order type
+        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
+            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
+            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
+                orderRepository.save(order);
+            } else {
+                throw new Exception("Not enough stocks to sell");
+            }
+        } else {
+            // Save BUY orders directly
+            orderRepository.save(order);
+        }
+    }
+
 document.addEventListener('DOMContentLoaded', () => {
     // Function to fetch stock data from the API
     async function fetchStockData() {
@@ -75,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
             userName: userName  // Pass the username in the request
         };
 
-        console.log("Order data: ", orderData);
+        console.log("Order data being sent ", JSON.stringify(orderData));
 
         try {
             const response = await fetch('http://localhost:8081/api/orders/create', {
@@ -113,247 +185,4 @@ function getCurrentUserName() {
     const userName = localStorage.getItem('userName');
     console.log("Fetched userName: ", userName);
     return userName;  // This assumes you store the username in localStorage
-}
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Investor's Homepage</title>
-    <link rel="stylesheet" href="investor_style.css">
-</head>
-<body>
-    <header>
-        <h1 id="investorName">Investor Name</h1>
-        <nav><a href="login1.html"><button id="logoutButton">Logout</button></a></nav>
-        
-    </header>
-    <nav>
-        <a href="portfolio.html">
-            <button id="viewPortfolio">View Portfolio</button>
-        </a>
-        <a href="order_history.html">
-            <button id="viewOrderHistory">View Order History</button>
-        </a>
-
-
-        
-        
-    </nav>
-    <section id="stocksSection">
-        <table id="stocksTable">
-            <thead>
-                <tr>
-                    <th>Stock Symbol</th>
-                    <th>Company Name</th>
-                    <th>Price</th>
-                    <th>Volume</th>
-                    <th>Percentage Change</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="stocksTableBody">
-                <!-- Example row -->
-                <tr data-symbol="ISFT" data-company-name="Coral India Finance & Housing Limited">
-                    <td>ISFT</td>
-                    <td>Coral India Finance & Housing Limited</td>
-                    <td>$411.85</td>
-                    <td>0</td>
-                    <td>0</td>
-                    <td>
-                        <button class="buy-btn" onclick="handleAction('buy', 'ISFT')">Buy</button>
-                        <button class="sell-btn" onclick="handleAction('sell', 'ISFT')">Sell</button>
-                    </td>
-                </tr>
-            </tbody>
-            
-        </table>
-    </section>
-
-    <script src="investor_scripts.js"></script>
-</body>
-</html>
-
-
-
-
-@RestController
-@RequestMapping("/api/orders")
-public class OrderController {
-
-    @Autowired
-    private OrderService orderService;
-
-    @GetMapping("/history")
-    public List<OrderModel> getOrderHistory(
-            @RequestParam(value = "userId", required = false) String userId,
-            @RequestParam(value = "begin_date", required = false) String beginDateStr,
-            @RequestParam(value = "end_date", required = false) String endDateStr) {
-
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
-        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
-
-        return orderService.getOrderHistory(userId, beginDate, endDate);
-    }
-    @CrossOrigin(origins = "http://127.0.0.1:3000")
-    @PostMapping("/create")
-    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel, @RequestParam String userName) {
-        try {
-            // Call the service to process the order
-            orderService.createOrder(orderModel,userName);
-            return ResponseEntity.ok("Order placed successfully!");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Error creating order: " + e.getMessage());
-        }
-    }
-}
-
-@Service
-public class OrderService {
-
-    @Autowired
-    private OrderRepo orderRepository;
-
-
-    @Autowired
-    private StockRepo stockRepo;
-
-    @Autowired
-    private HoldingRepo holdingRepo;
- //   @Autowired
-//    private CompanyRepository companyRepository; // Assuming you have this to get company names
-    
-    @Autowired
-    private UserRepo userRepo;
-
-    public List<OrderEntity> getAllOrders() {
-        return orderRepository.findAll();
-    }
-
-    public List<OrderModel> getOrderHistory(String userName, LocalDateTime beginDate, LocalDateTime endDate) {
-        List<OrderEntity> orders = orderRepository.findAll();
-
-        if (userName != null) {
-            orders = orders.stream()
-                .filter(order -> order.getUser().getUserName().equals(userName))
-                .collect(Collectors.toList());
-        }
-
-        if (beginDate != null && endDate != null) {
-            orders = orders.stream()
-                .filter(order -> !order.getCreatedAt().isBefore(beginDate) && !order.getCreatedAt().isAfter(endDate))
-                .collect(Collectors.toList());
-        }
-
-        return orders.stream().map(order -> {
-            OrderModel dto = new OrderModel();
-            dto.setTransactionId(order.getOrderId());
-            dto.setTransactionType(order.getOrderType().name());
-//            dto.setCompanyName(getCompanyNameById(order.getCompanyId()));
-            dto.setDate(order.getCreatedAt());
-            dto.setCompanyName(order.getStockDetail().getName());
-            dto.setSharePrice(order.getPrice());
-            dto.setQuantity(order.getQuantity());
-            dto.setTotalPrice(order.getPrice().multiply(BigDecimal.valueOf(order.getQuantity())));
-            dto.setStatus(order.getStatus().name());
-            return dto;
-        }).collect(Collectors.toList());
-    }
-    
-    public void createOrder(OrderModel orderModel, String userName) throws Exception {
-        // Fetch stock details by symbol
-        StockEntity stock = stockRepo.findByName(orderModel.getCompanyName())
-                .orElseThrow(() -> new Exception("Stock not found"));
-
-        // Fetch the user by the passed userName from the frontend
-        UserEntity user = userRepo.findByUserName(userName)
-                .orElseThrow(() -> new Exception("User not found"));
-
-        // Create and populate the OrderEntity
-        OrderEntity order = new OrderEntity();
-        order.setStockDetail(stock);
-        order.setUser(user);
-        order.setQuantity(orderModel.getQuantity());
-        order.setPrice(stock.getPrice());  // Use the current price from the stock
-        order.setOrderType(OrderType.valueOf(orderModel.getOrderType()));
-        order.setStatus(OrderStatus.PENDING);  // Initially, the order is pending
-        order.setCreatedAt(LocalDateTime.now());
-
-        // Save order based on order type
-        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
-            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
-            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
-                orderRepository.save(order);
-            } else {
-                throw new Exception("Not enough stocks to sell");
-            }
-        } else {
-            // Save BUY orders directly
-            orderRepository.save(order);
-        }
-    }
-
-//    private UserEntity getCurrentUser() {
-////        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-////
-////        if (principal instanceof UserDetails) {
-////            String username = ((UserDetails) principal).getUsername();
-////            return userRepo.findByUserName(username)
-////                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
-////        } else {
-////            throw new RuntimeException("No authenticated user found");
-////        }
-//    }
-    
-}
-
-
-//    private String getCompanyNameById(Long companyId) {
-//        // Fetch company name by companyId
-//        Optional<Company> company = companyRepository.findById(companyId);
-//        return company.map(Company::getName).orElse("Unknown");
-//    }
-
-@Repository
-public interface OrderRepo extends JpaRepository<OrderEntity, Integer> {
-
-//	List<OrderEntity> findByTimeRange(LocalDateTime startOfDay, LocalDateTime endOfDay);
-
-//	List<OrderEntity> findByTimeStampBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay,String status);
-
-//	List<OrderEntity> findByCreatedAtBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay, String string);
-
-	//List<OrderEntity> findByStockDetail_StockId(String string);
-
-	List<OrderEntity> findByStockDetail_Symbol(String string);
-	
-//	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetween(String string, LocalDateTime startOfDay, LocalDateTime endOfDay);
-
-//	List<OrderEntity> findByStockDetail_SymbolAndStatusAndCreatedAtBetween(String string, LocalDateTime startOfDay,
-//			LocalDateTime endOfDay, String string2);
-
-
-
-	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetweenAndStatus(String string, LocalDateTime startOfDay,
-			LocalDateTime endOfDay, OrderStatus pending);
-
-//	List<OrderEntity> findByCreatedAtBetweenAndStatusAndStockId(LocalDateTime startOfDay, LocalDateTime endOfDay,
-//			String string, String name);	
-
-}
-
-
-
-@Repository
-public interface StockRepo extends JpaRepository<StockEntity,String>  {
-
-	StockEntity getBySymbol(String stockId);
-
-	Optional<StockEntity> findByName(String companyName);
-
-
-	
 }
