@@ -1,0 +1,546 @@
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/history")
+    public List<OrderModel> getOrderHistory(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "begin_date", required = false) String beginDateStr,
+            @RequestParam(value = "end_date", required = false) String endDateStr) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDateTime beginDate = beginDateStr != null ? LocalDate.parse(beginDateStr, formatter).atStartOfDay() : null;
+        LocalDateTime endDate = endDateStr != null ? LocalDate.parse(endDateStr, formatter).atTime(23, 59, 59) : null;
+
+        return orderService.getOrderHistory(userId, beginDate, endDate);
+    }
+    @CrossOrigin(origins = "http://127.0.0.1:3000")
+    @PostMapping("/create")
+    public ResponseEntity<String> createOrder(@RequestBody OrderModel orderModel) {
+        try {
+            // Call the service to process the order
+        	System.out.println("Recieved orderModel: " + orderModel);
+        	
+        	System.out.println("Recieved userName: " + orderModel.getCompanyName());
+            orderService.createOrder(orderModel,orderModel.getUserName());
+            return ResponseEntity.ok("Order placed successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating order: " + e.getMessage());
+        }
+    }
+}
+
+
+@RestController
+public class HoldingsController {
+
+	@Autowired
+	private HoldingService holdingService;
+
+	@GetMapping("/holdings")
+	public ResponseEntity<ResponseDto> getUserHoldings(@RequestBody UserResponseModel user) {
+		ResponseDto response = holdingService.getUserHoldings(user);
+		return new ResponseEntity<ResponseDto>(response, HttpStatus.valueOf(response.getStatusCode()));
+	}
+	
+	@PostMapping("/upload")
+    public String handleFileUpload(@RequestParam("file") MultipartFile file) throws java.io.IOException {
+        if (file.isEmpty()) {
+            return "No file uploaded";
+        }
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
+            String line;
+//            reader.readLine(); // Skip header row
+            while ((line = reader.readLine()) != null) {
+                String[] data = line.split(",");
+                if (data.length == 6) {
+                    //Long companyId = Long.parseLong(data[0]);
+                    String companyName = data[0];
+                    String symbol = data[1];
+                    String description = data[2];
+                    Long volume = Long.parseLong(data[3]);
+                    String date = data[4];
+                    BigDecimal stockPrice = new BigDecimal(data[5]);
+                    holdingService.saveStockData(companyName, symbol, description, volume, date, stockPrice);
+                }
+            }
+            return "File uploaded and data saved successfully";
+        } catch (IOException e) {
+            return "Error processing file: " + e.getMessage();
+        }
+    }
+	
+	@PostMapping("/place-order")
+	public ResponseEntity<ResponseDto>placeOrders(@RequestParam String stockId, @RequestParam String userId,
+			Integer quantity,String orderType){
+		ResponseDto response = holdingService.placeOrder(stockId, userId,quantity,orderType);
+		return new ResponseEntity<ResponseDto>(response, HttpStatus.valueOf(response.getStatusCode())); 
+		
+	}
+	
+}
+
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+@RestController
+@RequestMapping("/stocks")
+public class StockListingController {
+
+	@Autowired
+	private StockListingService stockService;
+
+	/*
+	 * End-point to fetch all available stocks.
+	 *
+	 * @return ResponseEntity with a list of StockModel and HTTP status
+	 */
+	
+	@GetMapping("/list")
+	public ResponseEntity<ResponseDto> getAllStocks() {
+			// Fetch the list of stocks from the service
+			ResponseDto response = stockService.getAvailableStocks();
+			return new ResponseEntity<ResponseDto>(response, HttpStatus.valueOf(response.getStatusCode()));
+	}
+}
+
+
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepo orderRepository;
+
+
+    @Autowired
+    private StockRepo stockRepo;
+
+    @Autowired
+    private HoldingRepo holdingRepo;
+ //   @Autowired
+//    private CompanyRepository companyRepository; // Assuming you have this to get company names
+    
+    @Autowired
+    private UserRepo userRepo;
+
+    public List<OrderEntity> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    public List<OrderModel> getOrderHistory(String userName, LocalDateTime beginDate, LocalDateTime endDate) {
+        List<OrderEntity> orders = orderRepository.findAll();
+
+        if (userName != null) {
+            orders = orders.stream()
+                .filter(order -> order.getUser().getUserName().equals(userName))
+                .collect(Collectors.toList());
+        }
+
+        if (beginDate != null && endDate != null) {
+            orders = orders.stream()
+                .filter(order -> !order.getCreatedAt().isBefore(beginDate) && !order.getCreatedAt().isAfter(endDate))
+                .collect(Collectors.toList());
+        }
+
+        return orders.stream().map(order -> {
+            OrderModel dto = new OrderModel();
+            dto.setTransactionId(order.getOrderId());
+            dto.setTransactionType(order.getOrderType());
+//            dto.setCompanyName(getCompanyNameById(order.getCompanyId()));
+            dto.setDate(order.getCreatedAt());
+            dto.setCompanyName(order.getStockDetail().getName());
+            dto.setSharePrice(order.getPrice());
+            dto.setQuantity(order.getQuantity());
+            dto.setTotalPrice(order.getPrice().multiply(BigDecimal.valueOf(order.getQuantity())));
+            dto.setStatus(order.getStatus());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+    
+    public void createOrder(OrderModel orderModel, String userName) throws Exception {
+        // Fetch stock details by symbol
+    	
+    	System.out.println("Company Name: " + orderModel.getCompanyName());
+    	System.out.println("Creating order: " + userName);
+    	
+        StockEntity stock = stockRepo.findByName(orderModel.getCompanyName())
+                .orElseThrow(() -> new Exception("Stock not found"));
+        
+        System.out.println("stock Name: " + stock.getName());
+        // Fetch the user by the passed userName from the frontend
+        UserEntity user = userRepo.findByUserName(userName)
+                .orElseThrow(() -> new Exception("User not found"));
+        
+        
+        System.out.println("Stock found: " + stock.getName() + ", Price" + stock.getPrice());
+        
+        if(stock == null) {
+        	throw new Exception("Stock not found "+orderModel.getCompanyName());
+        }
+        
+        // Create and populate the OrderEntity
+        OrderEntity order = new OrderEntity();
+        order.setStockDetail(stock);
+        order.setUser(user);
+        order.setQuantity(orderModel.getQuantity());
+        order.setPrice(stock.getPrice());  // Use the current price from the stock
+        order.setOrderType(orderModel.getOrderType());
+        order.setStatus("PENDING");  // Initially, the order is pending
+        order.setCreatedAt(LocalDateTime.now());
+        order.setTotalPrice(stock.getPrice().multiply(BigDecimal.valueOf(orderModel.getQuantity())));
+        
+        System.out.println("Testing but not working"+order);
+
+        // Save order based on order type
+        if (orderModel.getOrderType().equalsIgnoreCase("SELL")) {
+            Optional<HoldingEntity> holding = holdingRepo.findByUser_UserNameAndStock_Symbol(user.getUserName(), stock.getSymbol());
+            if (holding.isPresent() && holding.get().getNoOfStocks() >= orderModel.getQuantity()) {
+                orderRepository.save(order);
+            } else {
+                throw new Exception("Not enough stocks to sell");
+            }
+        } else {
+            // Save BUY orders directly
+            orderRepository.save(order);
+        }
+//        orderRepository.save(order);
+    }
+
+//    private UserEntity getCurrentUser() {
+////        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+////
+////        if (principal instanceof UserDetails) {
+////            String username = ((UserDetails) principal).getUsername();
+////            return userRepo.findByUserName(username)
+////                    .orElseThrow(() -> new RuntimeException("User not found: " + username));
+////        } else {
+////            throw new RuntimeException("No authenticated user found");
+////        }
+//    }
+    
+}
+
+
+//    private String getCompanyNameById(Long companyId) {
+//        // Fetch company name by companyId
+//        Optional<Company> company = companyRepository.findById(companyId);
+//        return company.map(Company::getName).orElse("Unknown");
+//    }
+
+
+@Service
+public class HoldingServiceImplementation implements HoldingService {
+	
+	@Autowired
+	private HoldingRepo holdingRepo;
+	@Autowired
+	private StockHistoryRepo stockHistoryRepo;
+	@Autowired
+	private StockRepo stockRepo;
+	@Autowired
+	private OrderRepo orderRepo;
+	@Autowired
+	private UserRepo userRepo;
+
+	@Override
+	public ResponseDto getUserHoldings( UserResponseModel user) {
+		Set<HoldingEntity> userHoldings = holdingRepo.getHoldingsByUser_UserName(user.getUserName());
+		if(userHoldings.isEmpty())
+			return new ResponseDto(HttpStatus.OK, "no holdings", userHoldings);
+		
+		return new ResponseDto(HttpStatus.OK,"Holdings",userHoldings);
+	}
+
+	@Override
+	public void saveStockData(String companyName, String symbol, String description, Long volume, String date,
+			BigDecimal stockPrice) {
+		StockEntity stock = new StockEntity(companyName, symbol, description, stockPrice);
+		stockRepo.save(stock);
+		StockHistoryEntity priceDetail = new StockHistoryEntity();
+	    priceDetail.setStock(stock);
+	    priceDetail.setPrice(stockPrice);
+	    priceDetail.setDate(LocalDate.now());
+	    priceDetail.setVolume(0l);
+	    
+	    stockHistoryRepo.save(priceDetail);
+	}
+
+	@Override
+	public ResponseDto placeOrder(String stockId, String userId,Integer quantity, String orderType) {
+//		StockEntity stock = stockRepo.getBySymbol(stockId);
+//		UserEntity user = userRepo.getByUserName(userId);
+//		OrderType type = orderType.equalsIgnoreCase("buy")?OrderType.BUY:OrderType.SELL; 
+		return null;
+		
+	}
+	
+	
+																																																																																																																																																																																																																																																																																																							
+	
+
+}
+
+
+public class OrderModel {
+	private Integer orderId;
+    public String orderType; // Equivalent to OrderType
+    private String companyName; // Requires a lookup or join to get the company name
+    private LocalDateTime date;
+    private BigDecimal price;
+    private Integer quantity;
+    private BigDecimal totalPrice;
+    public String status; // Equivalent to OrderStatus
+    private String userName;
+    
+    
+    public String getUserName() {
+		return userName;
+	}
+
+	public void setUserName(String userName) {
+		this.userName = userName;
+	}
+
+	public void setOrderId(Integer orderId) {
+		this.orderId = orderId;
+	}
+
+	public void setOrderType(String orderType) {
+		this.orderType = orderType;
+	}
+
+	public void setPrice(BigDecimal price) {
+		this.price = price;
+	}
+
+	public Integer getOrderId() {
+        return orderId;
+    }
+
+    public void setTransactionId(Integer orderId) {
+        this.orderId = orderId;
+    }
+
+    public String getOrderType() {
+        return orderType;
+    }
+
+    public void setTransactionType(String orderType) {
+        this.orderType = orderType;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public LocalDateTime getDate() {
+        return date;
+    }
+
+    public void setDate(LocalDateTime date) {
+        this.date = date;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public void setSharePrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    public Integer getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(Integer quantity) {
+        this.quantity = quantity;
+    }
+
+    public BigDecimal getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(BigDecimal totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+}
+
+@Entity
+@Data
+@Table(name = "order_history")
+public class OrderEntity {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Integer orderId;
+
+	@ManyToOne(optional = false)
+	@JoinColumn(name = "user_id", referencedColumnName = "userName")
+	private UserEntity user;
+
+	@ManyToOne(optional = false)
+	@JoinColumn(name = "stock_id", referencedColumnName = "symbol")
+	private StockEntity stockDetail;
+
+//	@Enumerated(EnumType.STRING)
+	@Column(name = "order_type", nullable = false)
+	private String orderType;
+
+	@Column(name = "quantity", nullable = false)
+	private Integer quantity;
+
+	@Column(name = "price", nullable = false)
+	private BigDecimal price;
+
+//	@Enumerated(EnumType.STRING)
+	@Column(name = "status", nullable = false)
+	private String status;
+	
+	private LocalDateTime createdAt;
+	
+	private BigDecimal totalPrice;
+	
+
+	public void setTotalPrice(BigDecimal totalPrice) {
+		// TODO Auto-generated method stub	
+		this.totalPrice = totalPrice;
+	}
+	
+//	@Column(name = "price", nullable = false)
+//	private BigDecimal Totalprice;
+	
+	
+	
+//	public OrderEntity(String stockId, String userId,Integer quantity, String orderType) {
+//		
+//	}
+
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor	
+@Data
+@Table(name = "stock_info")
+public class StockEntity {
+
+//	@Id
+//	@GeneratedValue(strategy = GenerationType.IDENTITY)
+//	private Integer companyId;
+	
+	@Column(name = "name",nullable = false, length = 100)
+    private String name;
+	
+	@Id
+    private String symbol;
+	
+	@Column(columnDefinition = "TEXT")
+    private String description;
+	
+	@Column(nullable = false)
+	private BigDecimal price;
+	
+//	@OneToMany(mappedBy = "stock", fetch = FetchType.LAZY,cascade = CascadeType.PERSIST,
+//			targetEntity = StockHistoryEntity.class)
+//	private List<StockHistoryEntity> stockHistory;
+    
+//    @Override
+//    public boolean equals(Object o) {
+//        if (this == o) return true;
+//        if (o == null || getClass() != o.getClass()) return false;
+//        CompanyEntity company = (CompanyEntity) o;
+//        return Objects.equals(companyId, company.companyId) &&
+//               Objects.equals(name, company.name) &&
+//               Objects.equals(symbol, company.symbol) &&
+//               Objects.equals(description, company.description);
+//    }
+//
+//    @Override
+//    public int hashCode() {
+//        return Objects.hash(companyId, name, symbol, description);
+//    }
+//    
+    @Override
+    public String toString() {
+        return "Company{" +
+               "name='" + name + '\'' +
+               ", symbol='" + symbol + '\'' +
+               ", description='" + description + '\'' +
+               ""+
+               '}';
+    }
+
+	public BigDecimal getPrice() {
+		// TODO Auto-generated method stub
+		return price;
+	}
+    
+    
+//   public StockEntity(StockModel stock) {
+//	   this.name = stock.getName();
+//	   this.symbol = stock.getSymbol();
+//	   this.description = stock.getDescription();
+//   }
+	
+}
+
+
+
+
+@Repository
+public interface OrderRepo extends JpaRepository<OrderEntity, Integer> {
+
+//	List<OrderEntity> findByTimeRange(LocalDateTime startOfDay, LocalDateTime endOfDay);
+
+//	List<OrderEntity> findByTimeStampBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay,String status);
+
+//	List<OrderEntity> findByCreatedAtBetweenAndStatus(LocalDateTime startOfDay, LocalDateTime endOfDay, String string);
+
+	//List<OrderEntity> findByStockDetail_StockId(String string);
+
+	List<OrderEntity> findByStockDetail_Symbol(String string);
+	
+//	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetween(String string, LocalDateTime startOfDay, LocalDateTime endOfDay);
+
+//	List<OrderEntity> findByStockDetail_SymbolAndStatusAndCreatedAtBetween(String string, LocalDateTime startOfDay,
+//			LocalDateTime endOfDay, String string2);
+
+
+
+	List<OrderEntity> findByStockDetail_SymbolAndCreatedAtBetweenAndStatus(String string, LocalDateTime startOfDay,
+			LocalDateTime endOfDay, OrderStatus pending);
+
+//	List<OrderEntity> findByCreatedAtBetweenAndStatusAndStockId(LocalDateTime startOfDay, LocalDateTime endOfDay,
+//			String string, String name);	
+
+}
+
+@Repository
+public interface StockRepo extends JpaRepository<StockEntity,String>  {
+
+	StockEntity getBySymbol(String stockId);
+
+	Optional<StockEntity> findByName(String companyName);
+
+
+	
+}
+
+
+
+
+
