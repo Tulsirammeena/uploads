@@ -1,90 +1,59 @@
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
+// Handle File Upload Form Submission
+document.querySelector('.file-upload form').addEventListener('submit', async function(event) {
+    event.preventDefault(); // Prevent the default form submission
 
-@Service
-public class OrderProcessingService {
-
-    @Autowired
-    private OrderService orderService;
-
-    // Scheduled task to run daily at 5:30 PM (use cron expression)
-    @Scheduled(cron = "0 30 17 * * *")
-    public void processPendingOrders() {
-        try {
-            System.out.println("Running scheduled task to process pending orders...");
-
-            // Process pending orders logic
-            orderService.processPendingOrders();
-
-        } catch (Exception e) {
-            System.err.println("Error processing pending orders: " + e.getMessage());
-        }
-    }
-}
-
-
-
-import java.time.LocalDateTime;
-
-@Service
-public class OrderService {
-
-    @Autowired
-    private OrderRepo orderRepository;
-
-    @Autowired
-    private HoldingRepo holdingRepo;
-
-    public void processPendingOrders() {
-        // Fetch all pending orders
-        List<OrderEntity> pendingOrders = orderRepository.findByStatus("PENDING");
-
-        for (OrderEntity order : pendingOrders) {
-            try {
-                // Process each order based on its type
-                if (order.getOrderType().equalsIgnoreCase("SELL")) {
-                    processSellOrder(order);
-                } else {
-                    processBuyOrder(order);
-                }
-            } catch (Exception e) {
-                System.err.println("Error processing order ID " + order.getOrderId() + ": " + e.getMessage());
-            }
-        }
+    const fileInput = document.getElementById('file');
+    if (!fileInput.files.length) {
+        alert('Please select a file to upload.');
+        return; // Exit the function if no file is selected
     }
 
-    private void processSellOrder(OrderEntity order) throws Exception {
-        // Check if user has enough stocks to sell
-        Optional<HoldingEntity> holdingOpt = holdingRepo.findByUser_UserNameAndStock_Symbol(
-                order.getUser().getUserName(), order.getStockDetail().getSymbol());
-        
-        if (holdingOpt.isPresent() && holdingOpt.get().getNoOfStocks() >= order.getQuantity()) {
-            // Update holding and mark order as SUCCESS
-            HoldingEntity holding = holdingOpt.get();
-            holding.setNoOfStocks(holding.getNoOfStocks() - order.getQuantity());
-            holdingRepo.save(holding);
+    const file = fileInput.files[0];
 
-            order.setStatus("SUCCESS");
-            orderRepository.save(order);
+    try {
+        // Create a FormData object and append the file
+        const formData = new FormData();
+        formData.append('file', file);
 
-            System.out.println("Processed sell order ID " + order.getOrderId());
+        // Send the file to the server
+        const response = await fetch('http://localhost:8081/admin/upload', {
+            method: 'POST',
+            body: formData // Use FormData as the body of the request
+        });
+
+        const result = await response.text(); // Read the response from the server
+        if (response.ok) {
+            // File uploaded successfully
+            alert('File uploaded successfully: ' + result);
         } else {
-            // Mark order as FAILED
-            order.setStatus("FAILED");
-            orderRepository.save(order);
-
-            throw new Exception("Not enough stocks to sell for order ID " + order.getOrderId());
+            // File upload failed
+            alert('File upload failed: ' + result);
         }
+    } catch (error) {
+        // Handle any errors during the fetch operation
+        console.error('Error uploading file:', error);
+        alert('Error uploading file');
     }
+});
 
-    private void processBuyOrder(OrderEntity order) {
-        // Mark order as SUCCESS (you can add more complex logic if needed)
-        order.setStatus("SUCCESS");
-        orderRepository.save(order);
+// Handle Compute Orders Button
+document.getElementById("processOrdersBtn").addEventListener("click", async () => {
+    try {
+        const response = await fetch('http://localhost:8081/admin/process-orders', {
+            method: 'POST',
+        });
 
-        System.out.println("Processed buy order ID " + order.getOrderId());
+        if (response.ok) {
+            alert("Pending orders processed successfully!");
+        } else {
+            const errorMsg = await response.text();  // Read error message from server
+            alert("Failed to process orders: " + errorMsg);
+        }
+    } catch (error) {
+        console.error("Error processing orders:", error);
+        alert("Error processing orders.");
     }
-}
+});
 
 
 @RestController
@@ -97,6 +66,7 @@ public class AdminController {
     @PostMapping("/process-orders")
     public ResponseEntity<String> processOrdersManually() {
         try {
+            // Call service to process pending orders
             orderProcessingService.processPendingOrders();
             return ResponseEntity.ok("Pending orders processed successfully!");
         } catch (Exception e) {
@@ -105,20 +75,3 @@ public class AdminController {
         }
     }
 }
-
-
-document.getElementById("processOrdersBtn").addEventListener("click", async () => {
-    try {
-        const response = await fetch('http://localhost:8081/admin/process-orders', {
-            method: 'POST',
-        });
-
-        if (response.ok) {
-            alert("Pending orders processed successfully!");
-        } else {
-            alert("Failed to process orders.");
-        }
-    } catch (error) {
-        console.error("Error processing orders:", error);
-    }
-});
